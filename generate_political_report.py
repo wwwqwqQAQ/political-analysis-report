@@ -72,6 +72,33 @@ def fetch_sina_news(lid, num=60):
             break
     return all_news[:num]
 
+def fetch_sina_search(keywords, per_kw=10):
+    """Search Sina News API for specific political keywords."""
+    results = []
+    seen_urls = set()
+    for kw in keywords:
+        url = f"https://search.sina.com.cn/api/news?q={kw}&size={per_kw}"
+        raw = curl(url)
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+            items = data.get("data", {}).get("list", [])
+            for item in items:
+                url_key = item.get("url", "")
+                if url_key in seen_urls:
+                    continue
+                seen_urls.add(url_key)
+                results.append({
+                    "title": item.get("title", ""),
+                    "ctime": str(item.get("ctime", "")),
+                    "url": url_key,
+                    "intro": item.get("intro", ""),
+                })
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return results
+
 # ═══════════════════════════════
 # ANALYSIS ENGINE
 # ═══════════════════════════════
@@ -79,14 +106,55 @@ def fetch_sina_news(lid, num=60):
 def classify_domestic(news_items):
     """Classify domestic news into: 政策法规, 人事调动, 重要会议, 经济政策, 社会治理, 军事国防.
     First filters out clearly international news."""
-    # International filter keywords
+    # Comprehensive international filter
     intl_filter = [
-        "美国", "特朗普", "拜登", "白宫", "五角大楼", "北约", "欧盟", "欧洲",
-        "日本", "韩国", "朝鲜", "印度", "澳大利亚", "乌克兰", "俄罗斯", "普京",
-        "中东", "以色列", "伊朗", "沙特", "巴勒斯坦", "哈马斯", "非洲",
-        "联合国", "G20", "G7", "世行", "IMF", "WTO", "APEC",
-        "土耳其", "巴西", "阿根廷", "墨西哥", "古巴", "委内瑞拉",
-        "德国", "法国", "英国", "意大利", "加拿大",
+        # 美洲
+        "美国", "特朗普", "拜登", "白宫", "五角大楼", "华盛顿", "美方", "美媒", "美元",
+        "加拿大", "墨西哥", "巴西", "阿根廷", "智利", "委内瑞拉", "古巴", "哥伦比亚",
+        "秘鲁", "玻利维亚", "乌拉圭", "巴拉圭", "厄瓜多尔", "洪都拉斯", "巴拿马",
+        # 欧洲
+        "北约", "欧盟", "欧洲", "欧元", "布鲁塞尔",
+        "俄罗斯", "普京", "克里姆林宫", "俄方", "俄媒", "莫斯科",
+        "乌克兰", "基辅", "泽连斯基",
+        "英国", "伦敦", "英国政府", "英媒", "苏纳克", "斯塔默",
+        "法国", "巴黎", "马克龙", "爱丽舍宫", "法媒",
+        "德国", "柏林", "朔尔茨", "德媒", "德意志",
+        "意大利", "罗马", "梅洛尼", "梵蒂冈",
+        "西班牙", "葡萄牙", "荷兰", "比利时", "瑞士", "瑞典", "挪威", "丹麦", "芬兰",
+        "波兰", "捷克", "斯洛伐克", "匈牙利", "罗马尼亚", "保加利亚",
+        "奥地利", "爱尔兰", "冰岛", "希腊", "克罗地亚", "塞尔维亚",
+        "波罗的海", "爱沙尼亚", "拉脱维亚", "立陶宛",
+        # 中东
+        "以色列", "巴勒斯坦", "哈马斯", "加沙", "约旦河西岸", "以军", "以方",
+        "伊朗", "德黑兰", "伊朗核", "伊核",
+        "沙特", "阿联酋", "卡塔尔", "科威特", "阿曼", "巴林", "也门", "胡塞",
+        "伊拉克", "叙利亚", "黎巴嫩", "约旦", "埃及",
+        # 亚太
+        "日本", "东京", "日本政府", "日方", "日媒", "岸田", "丰田", "索尼",
+        "韩国", "首尔", "韩媒", "韩方", "尹锡悦", "三星", "现代",
+        "朝鲜", "平壤", "朝方", "朝中社", "金正恩",
+        "印度", "新德里", "莫迪", "印方", "印媒",
+        "澳大利亚", "新西兰", "堪培拉",
+        "东盟", "ASEAN",
+        "菲律宾", "马尼拉", "越南", "河内", "泰国", "曼谷", "印尼", "雅加达",
+        "马来西亚", "新加坡", "缅甸", "柬埔寨", "老挝", "文莱", "东帝汶",
+        "蒙古", "尼泊尔", "孟加拉", "斯里兰卡", "巴基斯坦", "阿富汗",
+        # 中亚/高加索
+        "哈萨克", "乌兹别克", "塔吉克", "吉尔吉斯", "土库曼",
+        "阿塞拜疆", "亚美尼亚", "格鲁吉亚",
+        # 非洲
+        "非洲", "埃及", "南非", "尼日利亚", "埃塞俄比亚", "肯尼亚", "苏丹",
+        "刚果", "安哥拉", "坦桑尼亚", "加纳", "摩洛哥", "阿尔及利亚",
+        "突尼斯", "利比亚", "津巴布韦", "索马里",
+        # 国际组织
+        "联合国", "联合国安理会", "古特雷斯",
+        "G20", "G7", "世行", "IMF", "WTO", "APEC", "OPEC",
+        "世界卫生", "世界银行", "国际货币",
+        # 外国公司/品牌
+        "英伟达", "波音", "空客", "苹果", "谷歌", "微软", "特斯拉",
+        "OpenAI", "Meta", "亚马逊",
+        # 跨国组织
+        "南共市", "非盟", "阿盟", "海合会",
     ]
 
     categories = {
@@ -527,9 +595,12 @@ print("=" * 60)
 
 # ── Fetch ──
 print("\n[1/4] 获取时政新闻...")
-domestic_raw = fetch_sina_news(lid=2511, num=80)
-intl_raw = fetch_sina_news(lid=2514, num=80)
-print(f"  国内: {len(domestic_raw)} 条 | 国际: {len(intl_raw)} 条")
+# 2510 = 国内, 2511 = 国际, 2669 = 社会
+domestic_raw = fetch_sina_news(lid=2510, num=80)
+intl_raw = fetch_sina_news(lid=2511, num=80)
+# Supplement: keyword search for policy & personnel
+kw_domestic = fetch_sina_search(["国务院", "发改委", "人事任免", "习近平", "央行", "外交"], 10)
+print(f"  国内: {len(domestic_raw)} 条 | 国际: {len(intl_raw)} 条 | 关键词补充: {len(kw_domestic)} 条")
 
 if not domestic_raw and not intl_raw:
     print("ERROR: 无法获取新闻数据")
@@ -537,7 +608,18 @@ if not domestic_raw and not intl_raw:
 
 # ── Analyze ──
 print("\n[2/4] 执行分析...")
-domestic_cats = classify_domestic(domestic_raw)
+# Merge feed + keyword search for domestic
+domestic_all = list(domestic_raw)
+domestic_all.extend(kw_domestic)
+# Deduplicate by URL
+seen = set()
+domestic_dedup = []
+for item in domestic_all:
+    u = item.get("url", "")
+    if u not in seen:
+        seen.add(u)
+        domestic_dedup.append(item)
+domestic_cats = classify_domestic(domestic_dedup)
 intl_cats = classify_international(intl_raw)
 key_policies = extract_key_policies(domestic_cats)
 personnel = extract_personnel_changes(domestic_cats)
