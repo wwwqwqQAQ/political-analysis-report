@@ -637,6 +637,130 @@ print(f"  国内分类: {', '.join(f'{k}({len(v)})' for k, v in domestic_cats.it
 print(f"  国际分类: {', '.join(f'{k}({len(v)})' for k, v in intl_cats.items() if len(v) > 0)}")
 print(f"  政策信号: {len(key_policies)} 条 | 人事: {len(personnel)} 条 | 会议: {len(meetings)} 条")
 
+# ── Deep Analysis ──
+def analyze_policy_pattern(policy_items):
+    """Analyze policy news for patterns: issuing bodies, policy areas, regulatory direction."""
+    if not policy_items:
+        return None
+    bodies = Counter()
+    areas = Counter()
+    for item in policy_items:
+        title = item["title"]
+        for b in ["国务院", "发改委", "财政部", "央行", "证监会", "工信部", "科技部",
+                   "商务部", "外交部", "国防部", "教育部", "卫健委", "生态环境",
+                   "交通运输", "农业农村", "文化和旅游", "中央办公厅", "深改委"]:
+            if b in title:
+                bodies[b] += 1
+        for a in ["经济", "金融", "产业", "科技", "环保", "教育", "医疗", "住房",
+                   "土地", "税收", "外贸", "基建", "农业", "能源", "数据", "AI"]:
+            if a in title:
+                areas[a] += 1
+    top_bodies = bodies.most_common(5)
+    top_areas = areas.most_common(5)
+    direction = "扩张性"
+    tighten_kw = ["限制", "监管", "整治", "查处", "禁止", "严控", "收紧", "清理"]
+    expand_kw = ["支持", "鼓励", "促进", "放宽", "试点", "补贴", "减免", "优化"]
+    tight = sum(1 for item in policy_items if any(kw in item["title"] for kw in tighten_kw))
+    expand = sum(1 for item in policy_items if any(kw in item["title"] for kw in expand_kw))
+    if expand > tight:
+        direction = "支持/鼓励型政策为主"
+    elif tight > expand:
+        direction = "监管/规范型政策为主"
+    else:
+        direction = "政策信号均衡"
+    return {
+        "top_bodies": top_bodies,
+        "top_areas": top_areas,
+        "direction": direction,
+        "total": len(policy_items),
+        "tight_count": tight,
+        "expand_count": expand,
+    }
+
+def analyze_personnel_pattern(personnel_items):
+    """Analyze personnel changes: level, region, type."""
+    if not personnel_items:
+        return None
+    levels = {"中央": 0, "省部级": 0, "地市级": 0, "县级": 0, "其他": 0}
+    types = {"任命": 0, "免职": 0, "调任": 0, "辞职": 0, "审查": 0, "其他": 0}
+    provinces = Counter()
+    for item in personnel_items:
+        title = item["title"]
+        for kw, key in [("省委书记", "省部级"), ("省长", "省部级"), ("部长", "中央"),
+                         ("市委书记", "地市级"), ("市长", "地市级"), ("县委书记", "县级"),
+                         ("县长", "县级"), ("中央", "中央"), ("国家", "中央")]:
+            if kw in title:
+                levels[key] += 1
+                break
+        else:
+            levels["其他"] += 1
+        for kw, key in [("任命", "任命"), ("免职", "免职"), ("调任", "调任"),
+                         ("辞职", "辞职"), ("审查", "审查"), ("调查", "审查")]:
+            if kw in title:
+                types[key] += 1
+                break
+        else:
+            types["其他"] += 1
+        for p in ["山东", "广东", "江苏", "浙江", "河南", "四川", "湖北", "湖南",
+                   "河北", "福建", "安徽", "辽宁", "陕西", "江西", "广西", "云南",
+                   "贵州", "山西", "吉林", "黑龙江", "甘肃", "内蒙古", "新疆",
+                   "西藏", "海南", "宁夏", "青海", "北京", "上海", "天津", "重庆"]:
+            if p in title:
+                provinces[p] += 1
+                break
+    return {
+        "levels": levels,
+        "types": types,
+        "top_provinces": provinces.most_common(5),
+        "total": len(personnel_items),
+    }
+
+def analyze_international_dynamics(intl_cats, region_dist, power_dynamics):
+    """Deep analysis of international situation with multi-theory framing."""
+    analysis = {}
+
+    # Power competition assessment
+    us_count = power_dynamics.get("美国", 0)
+    cn_count = power_dynamics.get("中国", 0)
+    ru_count = power_dynamics.get("俄罗斯", 0)
+    eu_count = power_dynamics.get("欧盟", 0)
+    if us_count > 0:
+        us_share = us_count / max(sum(power_dynamics.values()), 1) * 100
+        analysis["power_focus"] = (
+            f"美国以{us_count}条相关新闻占据国际关注度的{us_share:.0f}%，"
+            f"中国相关{cn_count}条。从国际体系理论看，当前国际议程设置权仍高度集中于美国。"
+        )
+    top_region = sorted(region_dist.items(), key=lambda x: x[1], reverse=True)[0] if region_dist else None
+    if top_region:
+        analysis["region_focus"] = (
+            f"国际新闻区域分布中，{top_region[0]}以{top_region[1]}条居首，"
+            f"反映该地区地缘政治热度最高。区域热点的集中度可通过赫芬达尔指数衡量——"
+            f"集中度越高，说明国际冲突越趋于局部化而非全局扩散。"
+        )
+
+    # Conflict type analysis
+    conflict_items = intl_cats.get("地缘冲突", [])
+    if conflict_items:
+        c_types = Counter()
+        for item in conflict_items:
+            title = item["title"]
+            for ct, kws in [("军事对抗", ["军事", "导弹", "空袭", "打击", "进攻"]),
+                            ("外交危机", ["外交", "抗议", "召见", "驱逐"]),
+                            ("安全威胁", ["恐袭", "爆炸", "极端", "武装"]),
+                            ("领土争端", ["领土", "边界", "主权", "争议"])]:
+                if any(kw in title for kw in kws):
+                    c_types[ct] += 1
+                    break
+            else:
+                c_types["其他"] += 1
+        analysis["conflict_types"] = dict(c_types.most_common(3))
+
+    return analysis
+
+policy_analysis = analyze_policy_pattern(domestic_cats.get("政策法规", []))
+personnel_analysis = analyze_personnel_pattern(personnel)
+intl_analysis = analyze_international_dynamics(intl_cats, region_dist, power_dynamics)
+
 # ── Charts ──
 print("\n[3/4] 生成图表...")
 charts = {
@@ -671,34 +795,69 @@ style.font.name = 'Times New Roman'
 style.font.size = Pt(11)
 style.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
 
+def fmt_date(ctime_str):
+    try:
+        ts = int(ctime_str)
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+    except (ValueError, OSError):
+        return ""
+
+def add_news_bullet(doc, item):
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(item["title"])
+    run.font.size = Pt(10)
+    d = fmt_date(item.get("ctime", ""))
+    if d:
+        run2 = p.add_run(f'  ({d})')
+        run2.font.size = Pt(9)
+        run2.font.color.rgb = RGBColor(150, 150, 150)
+
+def add_analysis_box(doc, text):
+    """Add an indented analysis paragraph with distinct styling."""
+    p = doc.add_paragraph()
+    run = p.add_run(f'▸ 分析：{text}')
+    run.font.size = Pt(10)
+    run.font.color.rgb = RGBColor(int(C_BLUE[1:3],16), int(C_BLUE[3:5],16), int(C_BLUE[5:7],16))
+    p.paragraph_format.left_indent = Cm(0.8)
+
 # ── COVER ──
 title = doc.add_heading('时政分析日报', level=0)
 title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 subtitle = doc.add_paragraph()
 subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-run = subtitle.add_run(f'{datetime.now().strftime("%Y年%m月%d日")} | 基于学术框架的国际国内时政分析')
+run = subtitle.add_run(f'{datetime.now().strftime("%Y年%m月%d日")} | 基于学术框架的国际国内时政深度分析')
 run.font.size = Pt(12)
 run.font.color.rgb = RGBColor(100, 100, 100)
 doc.add_paragraph()
 
 # ── Executive Summary ──
 doc.add_heading('内容摘要', level=1)
-summary_parts = []
-if domestic_cats.get("政策法规"):
-    n = len(domestic_cats["政策法规"])
-    top_pol = domestic_cats["政策法规"][0]["title"][:50]
-    summary_parts.append(f"国内政策：监测到{n}条政策法规动态，重点关注「{top_pol}」等信号。")
-if personnel:
-    summary_parts.append(f"人事调动：追踪到{len(personnel)}条任免信息。")
-if intl_cats.get("大国博弈"):
-    n = len(intl_cats["大国博弈"])
-    summary_parts.append(f"大国博弈：{n}条相关新闻，中美战略竞争仍为国际政治核心议题。")
-top_region = sorted(region_dist.items(), key=lambda x: x[1], reverse=True)
-if top_region:
-    summary_parts.append(f"区域热点：国际关注度最高的区域为{top_region[0][0]}（{top_region[0][1]}条），其次为{top_region[1][0]}（{top_region[1][1]}条）。")
 
-for sp in summary_parts:
-    doc.add_paragraph(sp, style='List Bullet')
+# Synthesize a real summary paragraph
+summary_lines = []
+if policy_analysis:
+    summary_lines.append(
+        f"本日国内政策信号以{policy_analysis['direction']}，"
+        f"主要发声机构为{'、'.join(b for b,_ in policy_analysis['top_bodies'][:3])}，"
+        f"重点领域涉及{'、'.join(a for a,_ in policy_analysis['top_areas'][:3])}。"
+    )
+if personnel_analysis and personnel_analysis["total"] > 0:
+    pl = personnel_analysis
+    top_types = [f"{k}({v})" for k, v in pl["types"].items() if v > 0][:3]
+    summary_lines.append(
+        f"人事层面监测到{pl['total']}条变动，类型为{'、'.join(top_types)}，"
+        f"主要涉及{'、'.join(p for p,_ in pl['top_provinces'][:3]) if pl['top_provinces'] else '多省份'}。"
+    )
+if intl_analysis.get("power_focus"):
+    summary_lines.append(intl_analysis["power_focus"])
+if intl_analysis.get("region_focus"):
+    summary_lines.append(intl_analysis["region_focus"])
+if intl_analysis.get("conflict_types"):
+    ct = intl_analysis["conflict_types"]
+    summary_lines.append(f"国际冲突类型分布：{'；'.join(f'{k}({v}条)' for k,v in ct.items())}。")
+
+for line in summary_lines:
+    doc.add_paragraph(line, style='List Bullet')
 
 # ═══════════════════════════════
 # PART ONE: DOMESTIC
@@ -711,21 +870,41 @@ doc.add_heading('第一部分：国内时政', level=1)
 doc.add_heading('一、政策法规动态', level=2)
 policy_items = domestic_cats.get("政策法规", [])
 if policy_items:
-    doc.add_paragraph(f'近24小时监测到{len(policy_items)}条政策法规类新闻，以下为重点信号：')
+    doc.add_paragraph(f'近24小时监测到{len(policy_items)}条政策法规类新闻。')
     for item in policy_items[:12]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
-        if item.get("ctime"):
-            try:
-                ts = int(item["ctime"])
-                date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-            except (ValueError, OSError):
-                date_str = ""
-            if date_str:
-                run2 = p.add_run(f'  ({date_str})')
-                run2.font.size = Pt(9)
-                run2.font.color.rgb = RGBColor(150, 150, 150)
+        add_news_bullet(doc, item)
+
+    # Analysis
+    if policy_analysis:
+        doc.add_paragraph()
+        doc.add_heading('【深度分析】政策格局研判', level=3)
+        bodies_str = '、'.join(f'{b}({c}条)' for b, c in policy_analysis['top_bodies'])
+        areas_str = '、'.join(f'{a}({c}条)' for a, c in policy_analysis['top_areas'])
+        add_analysis_box(doc,
+            f"政策发布主体集中度：{bodies_str}。"
+            f"重点领域：{areas_str}。"
+            f"政策方向：{policy_analysis['direction']}（收紧类{policy_analysis['tight_count']}条 vs 支持类{policy_analysis['expand_count']}条）。"
+        )
+        if policy_analysis['top_bodies']:
+            top_body = policy_analysis['top_bodies'][0][0]
+            add_analysis_box(doc,
+                f"从官僚政治理论视角看，{top_body}的密集发文表明该部门在当前的跨部门博弈中处于议程推动者位置。"
+                f"其政策产出节奏可以作为判断高层对该领域重视程度的先行指标。"
+                f"后续应关注国务院常务会议是否将相关议题列入审议日程——"
+                f"若列入，则政策将从'部门推动'升格为'国家意志'，执行力度和资源配给将显著提升。"
+            )
+        if policy_analysis['expand_count'] > policy_analysis['tight_count']:
+            add_analysis_box(doc,
+                f"当前政策基调偏积极（{policy_analysis['expand_count']}条支持/鼓励 vs {policy_analysis['tight_count']}条监管/限制），"
+                f"从政治经济周期理论看，这可能意味着政策层在主动释放积极信号以稳定市场预期。"
+                f"但需警惕'政策繁荣'后的执行瓶颈——出台密度高不等于落地效果好，关键看配套细则和考核机制是否跟进。"
+            )
+        elif policy_analysis['tight_count'] > policy_analysis['expand_count']:
+            add_analysis_box(doc,
+                f"当前政策以监管规范型为主（{policy_analysis['tight_count']}条收紧 vs {policy_analysis['expand_count']}条支持），"
+                f"可能对应特定行业的整顿周期。从历史经验看，规范期通常持续3-6个月，"
+                f"之后进入'规范+发展并重'阶段。建议关注整顿对象和整顿边界的明确程度。"
+            )
 else:
     doc.add_paragraph("本日未监测到重大政策法规发布。")
 
@@ -734,19 +913,34 @@ doc.add_heading('二、人事调动', level=2)
 if personnel:
     doc.add_paragraph(f'监测到{len(personnel)}条人事任免相关新闻：')
     for item in personnel[:15]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
-        if item.get("ctime"):
-            try:
-                ts = int(item["ctime"])
-                date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-            except (ValueError, OSError):
-                date_str = ""
-            if date_str:
-                run2 = p.add_run(f'  ({date_str})')
-                run2.font.size = Pt(9)
-                run2.font.color.rgb = RGBColor(150, 150, 150)
+        add_news_bullet(doc, item)
+
+    if personnel_analysis:
+        doc.add_paragraph()
+        doc.add_heading('【深度分析】人事格局研判', level=3)
+        # Level distribution
+        levels_info = '、'.join(f'{k}{v}人' for k, v in personnel_analysis['levels'].items() if v > 0)
+        add_analysis_box(doc,
+            f"本次人事变动层级分布：{levels_info}。"
+            f"变动类型以{'、'.join(f'{k}({v}条)' for k,v in personnel_analysis['types'].items() if v > 0)}为主。"
+        )
+        if personnel_analysis['top_provinces']:
+            provs = '、'.join(f'{p}({c}条)' for p, c in personnel_analysis['top_provinces'])
+            add_analysis_box(doc,
+                f"地域分布：{provs}。从组织行为学来看，"
+                f"人事调动的区域集中度是观察中央对地方治理关注度分配的关键窗口。"
+                f"若某省份短期内密集出现人事调整，通常对应："
+                f"（1）该省即将迎来重大政策试点或重大工程；"
+                f"（2）中央对该省此前的工作绩效不满意；"
+                f"（3）正常的换届周期。需结合当地经济数据和政策动态交叉验证。"
+            )
+        if personnel_analysis['levels'].get('省部级', 0) > 3:
+            add_analysis_box(doc,
+                f"省部级变动{personnel_analysis['levels']['省部级']}人，密度偏高。"
+                f"省部级干部是全国治理体系的关键节点，其变动频率和方向（晋升/平调/退休/问责）"
+                f"是判断政治周期位置的核心指标。大规模省部级调整通常发生在党代会前后，"
+                f"若在非换届期出现，需关注是否与特定事件或政策转向相关。"
+            )
 else:
     doc.add_paragraph("本日未监测到重大人事调动信息。")
 
@@ -755,9 +949,25 @@ doc.add_heading('三、重要会议与讲话', level=2)
 if meetings:
     doc.add_paragraph(f'监测到{len(meetings)}条重要会议/讲话新闻：')
     for item in meetings[:10]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
+
+    # Meeting analysis
+    keywords_in_meetings = Counter()
+    for item in meetings:
+        for kw in ["高质量", "安全", "改革", "创新", "民生", "开放", "法治", "生态",
+                    "数字经济", "新质生产力", "共同富裕", "现代化", "乡村振兴"]:
+            if kw in item["title"]:
+                keywords_in_meetings[kw] += 1
+    if keywords_in_meetings:
+        top_kws = keywords_in_meetings.most_common(5)
+        kws_str = '、'.join(f'"{k}"({v}次)' for k, v in top_kws)
+        add_analysis_box(doc,
+            f"会议讲话中的高频政策关键词：{kws_str}。"
+            f"从政治沟通理论来看，高层讲话中的关键词频率是政策优先级排序的信号。"
+            f"重复出现的关键词大概率对应下一阶段的资源重点配置方向。"
+            f"建议追踪这些关键词在未来1-2个月内是否出现在国务院或部委的具体政策文件中——"
+            f"若出现，则说明'讲话定调→政策落地'的传导链已启动。"
+        )
 else:
     doc.add_paragraph("本日未监测到重大会议新闻。")
 
@@ -767,9 +977,23 @@ econ_items = domestic_cats.get("经济政策", [])
 if econ_items:
     doc.add_paragraph(f'监测到{len(econ_items)}条经济政策信号：')
     for item in econ_items[:10]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
+
+    # Economic analysis
+    econ_kw = Counter()
+    for item in econ_items:
+        for kw in ["财政", "货币", "房地产", "基建", "消费", "出口", "就业", "中小企业",
+                    "制造业", "数字经济", "绿色", "新能源"]:
+            if kw in item["title"]:
+                econ_kw[kw] += 1
+    if econ_kw:
+        top_econ = econ_kw.most_common(4)
+        add_analysis_box(doc,
+            f"经济政策热点集中：{'、'.join(f'{k}({v})' for k,v in top_econ)}。"
+            f"从宏观政策分析框架看，当前财政-货币组合的边际变化方向是判断经济政策立场的核心。"
+            f"若财政端基建/专项债信号增多而货币端稳健中性，则政策组合偏向'财政发力+货币配合'的"
+            f"经典逆周期调节模式；若两者同步宽松，则经济下行压力可能超出公开数据所反映的程度。"
+        )
 else:
     doc.add_paragraph("本日无显著经济政策信号。")
 
@@ -778,18 +1002,21 @@ doc.add_heading('五、社会治理动态', level=2)
 social_items = domestic_cats.get("社会治理", [])
 if social_items:
     for item in social_items[:8]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
+    if len(social_items) > 5:
+        add_analysis_box(doc,
+            f"社会治理类新闻{len(social_items)}条，覆盖面较广。"
+            f"从治理理论看，社会治理新闻的数量本身即为社会稳定性的代理指标——"
+            f"突发安全事件、公共卫生、自然灾害类新闻的集中出现需结合地域分布"
+            f"判断是局部偶发还是系统性风险信号。"
+        )
 
 # S6: Military & Defense
 doc.add_heading('六、军事国防', level=2)
 mil_items = domestic_cats.get("军事国防", [])
 if mil_items:
     for item in mil_items[:8]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
 else:
     doc.add_paragraph("本日无重大军事国防新闻。")
 
@@ -797,8 +1024,7 @@ else:
 if charts.get("domestic_cats"):
     doc.add_paragraph()
     doc.add_paragraph().add_run().add_picture(charts["domestic_cats"], width=Inches(5.5))
-    last_paragraph = doc.paragraphs[-1]
-    last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
 
 # S7: Domestic Outlook
 doc.add_paragraph()
@@ -808,12 +1034,10 @@ for outlook in domestic_outlook:
     run = p_title.add_run(outlook["title"])
     run.bold = True
     run.font.size = Pt(12)
-
     p_meta = doc.add_paragraph()
     run_v = p_meta.add_run(f'判断: {outlook["view"]}　|　时间维度: {outlook["horizon"]}')
     run_v.font.size = Pt(10)
-    run_v.font.color.rgb = RGBColor(int(C_BLUE[1:3], 16), int(C_BLUE[3:5], 16), int(C_BLUE[5:7], 16))
-
+    run_v.font.color.rgb = RGBColor(int(C_BLUE[1:3],16), int(C_BLUE[3:5],16), int(C_BLUE[5:7],16))
     doc.add_paragraph(outlook["analysis"])
 
 # ═══════════════════════════════
@@ -829,28 +1053,44 @@ great_power = intl_cats.get("大国博弈", [])
 if great_power:
     doc.add_paragraph(f'监测到{len(great_power)}条大国博弈相关新闻：')
     for item in great_power[:12]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
-        if item.get("ctime"):
-            try:
-                ts = int(item["ctime"])
-                date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-            except (ValueError, OSError):
-                date_str = ""
-            if date_str:
-                run2 = p.add_run(f'  ({date_str})')
-                run2.font.size = Pt(9)
-                run2.font.color.rgb = RGBColor(150, 150, 150)
+        add_news_bullet(doc, item)
+
+    if intl_analysis.get("power_focus"):
+        doc.add_paragraph()
+        doc.add_heading('【深度分析】大国战略态势', level=3)
+        add_analysis_box(doc, intl_analysis["power_focus"])
+        us, cn = power_dynamics.get("美国", 0), power_dynamics.get("中国", 0)
+        if us > cn * 1.5:
+            add_analysis_box(doc,
+                f"美国议程设置优势明显（美{us}条 vs 中{cn}条）。"
+                f"从国际政治传播学视角看，美国通过其全球媒体网络的议程设置能力，"
+                f"仍在定义'什么问题是重要问题'。这种'软权力'不对称——而非单纯的军事或经济实力差距——"
+                f"是中美战略竞争中最被低估的维度。中国近年通过CGTN、新华社海外分社等渠道加大投入，"
+                f"但改变全球议程设置权的'时滞效应'可能需要5-10年才能充分显现。"
+            )
+        if power_dynamics.get("俄罗斯", 0) > 5:
+            add_analysis_box(doc,
+                f"俄罗斯相关新闻{power_dynamics.get('俄罗斯', 0)}条，在大国博弈叙事中占据显著位置。"
+                f"这强化了一个结构性判断：当前国际体系正在从'单极时刻后的多极幻想'"
+                f"走向'中美俄三角博弈的新常态'。这一三角关系的特殊之处在于——"
+                f"中俄在制衡美国霸权上有共同利益，但在欧亚地缘秩序上存在结构性张力。"
+                f"中国需要在中俄'肩并肩'的战略协作与对欧、对美关系的弹性空间之间维持微妙平衡。"
+            )
 
 # S9: Geopolitical Conflicts
 doc.add_heading('九、地缘冲突与安全', level=2)
 conflicts = intl_cats.get("地缘冲突", [])
 if conflicts:
     for item in conflicts[:10]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
+    if intl_analysis.get("conflict_types"):
+        add_analysis_box(doc,
+            f"冲突类型分布：{'；'.join(f'{k}({v}条)' for k,v in intl_analysis['conflict_types'].items())}。"
+            f"从冲突研究（Conflict Studies）视角看，不同类型冲突对中国的传导路径截然不同："
+            f"军事对抗类直接影响中国海外利益保护和军贸风险评估；"
+            f"外交危机类考验中国作为联合国安理会常任理事国的立场平衡；"
+            f"安全威胁类涉及'一带一路'沿线项目的人员安全评估。"
+        )
 else:
     doc.add_paragraph("本日无重大地缘冲突新闻。")
 
@@ -859,27 +1099,39 @@ doc.add_heading('十、多边关系与外交', level=2)
 multilateral = intl_cats.get("多边关系", [])
 if multilateral:
     for item in multilateral[:10]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
+    if len(multilateral) > 3:
+        add_analysis_box(doc,
+            f"多边外交新闻{len(multilateral)}条。从自由制度主义理论看，"
+            f"多边机制活跃度是国际合作的晴雨表。当前需要区分两种多边主义："
+            f"一种是美国主导的'俱乐部式多边主义'（G7、AUKUS、芯片四方联盟），"
+            f"另一种是中国推动的'包容性多边主义'（金砖扩员、上合扩容、全球发展倡议）。"
+            f"从建构主义视角看，这两种多边主义的竞争本质是关于'21世纪国际规则由谁书写'的规范之争。"
+        )
 
 # S11: Global Economic Governance
 doc.add_heading('十一、全球经济治理', level=2)
 global_econ = intl_cats.get("经济治理", [])
 if global_econ:
     for item in global_econ[:10]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
 
 # S12: Regional Hotspots
 doc.add_heading('十二、区域热点', level=2)
 regional = intl_cats.get("区域热点", [])
 if regional:
     for item in regional[:10]:
-        p = doc.add_paragraph(style='List Bullet')
-        run = p.add_run(item["title"])
-        run.font.size = Pt(10)
+        add_news_bullet(doc, item)
+    top_region_item = sorted(region_dist.items(), key=lambda x: x[1], reverse=True)
+    if top_region_item:
+        top_r_names = '、'.join(f'{r}({c}条)' for r, c in top_region_item[:3])
+        add_analysis_box(doc,
+            f"区域关注度排序：{top_r_names}。各区域对中国的影响路径和干预能力不同："
+            f"亚太方向直接关系中国核心安全利益和'一带一路'关键节点；"
+            f"中东方向影响能源安全和人民币国际化进程；"
+            f"欧洲方向决定中欧经贸关系走向和技术合作空间。"
+            f"从战略优先级看，中国的外交-安全资源配置应大致遵循'亚太优先、欧亚并举、全球参与'的梯次结构。"
+        )
 
 # International charts
 doc.add_paragraph()
@@ -901,12 +1153,10 @@ for outlook in intl_outlook:
     run = p_title.add_run(outlook["title"])
     run.bold = True
     run.font.size = Pt(12)
-
     p_meta = doc.add_paragraph()
     run_v = p_meta.add_run(f'判断: {outlook["view"]}　|　时间维度: {outlook["horizon"]}')
     run_v.font.size = Pt(10)
-    run_v.font.color.rgb = RGBColor(int(C_RED[1:3], 16), int(C_RED[3:5], 16), int(C_RED[5:7], 16))
-
+    run_v.font.color.rgb = RGBColor(int(C_RED[1:3],16), int(C_RED[3:5],16), int(C_RED[5:7],16))
     doc.add_paragraph(outlook["analysis"])
 
 # ═══ FOOTER ═══
