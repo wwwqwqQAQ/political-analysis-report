@@ -89,8 +89,10 @@ def fetch_sina_search(keywords, per_kw=10):
                 if url_key in seen_urls:
                     continue
                 seen_urls.add(url_key)
+                title = item.get("title", "")
+                title = re.sub(r'<[^>]+>', '', title)  # strip HTML tags
                 results.append({
-                    "title": item.get("title", ""),
+                    "title": title,
                     "ctime": str(item.get("ctime", "")),
                     "url": url_key,
                     "intro": item.get("intro", ""),
